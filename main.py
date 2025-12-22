@@ -4,6 +4,7 @@ from micropython import RingIO, alloc_emergency_exception_buf
 from machine import UART, Timer, Pin, I2C
 from lib_lcd1602_2004_with_i2c import LCD
 from micropyGPS import MicropyGPS
+import _thread
 
 alloc_emergency_exception_buf(100)
 
@@ -25,7 +26,6 @@ set_dyn = bytes.fromhex(
     "b5 62 06 8a 09 00 00 04 00 00 21 00 11 20 04 f3 65"
 )  # set dynamic model to automobile (4)
 
-button = Pin(13, Pin.IN, Pin.PULL_UP)
 mode = 0
 
 # uart.write(set_dyn)
@@ -34,10 +34,10 @@ mode = 0
 class DataReader(object):
     def __init__(self):
         self.lines = {}
-        timer = Timer(1)
+        timer = Timer(0)
         timer.init(callback=self.update, freq=100, mode=Timer.PERIODIC)
 
-        p_timer = Timer(2)
+        p_timer = Timer(1)
         p_timer.init(callback=self.write_gps, period=1000, mode=Timer.PERIODIC)
 
     def update(self, _):  # this only reads ONE line
@@ -56,7 +56,7 @@ class DataReader(object):
 class DisplayUpdater(object):
     def __init__(self):
         self.lines = {}
-        timer = Timer(3)
+        timer = Timer(2)
         timer.init(callback=self.refresh, freq=25, mode=Timer.PERIODIC)
 
     def refresh(self, _):  # this only reads ONE line
@@ -79,8 +79,36 @@ class DisplayUpdater(object):
             lcd.puts(" " * 16, y=1)
 
 
-reader = DataReader()  # instantiate the timer
+class Button(object):
+    def __init__(self):
+        self.timer = Timer(3)
+        self.long_acc = 0
+        self.last_val = 1
+        self.pin = Pin(13, Pin.IN, Pin.PULL_UP)
+
+        self.timer.init(callback=self.poll, freq=25, mode=Timer.PERIODIC)
+
+    def poll(self, _):
+        if self.last_val == 1 and self.pin.value() == 0:
+            self.on_click()
+
+        self.last_val = self.pin.value()
+
+    def on_click(self):
+        global mode
+        mode = (mode + 1) % 3
+
+    def on_press(self):
+        pass
+
+
+def data_thread():
+    reader = DataReader()  # instantiate the timer
+
+
+_thread.start_new_thread(data_thread, ())
 display = DisplayUpdater()
+button = Button()
 
 
 def uart_handler(uart_instance):
@@ -89,15 +117,9 @@ def uart_handler(uart_instance):
         buffer.write(data)
 
 
-def button_handler(pin):
-    global mode
-    mode = (mode + 1) % 3
-
-
 # Attach the interrupt handler
 # Trigger on RX
-uart.irq(handler=uart_handler, trigger=UART.IRQ_RX)
-button.irq(handler=button_handler, trigger=Pin.IRQ_FALLING)
+uart.irq(handler=uart_handler, trigger=UART.IRQ_RX, hard=False)
 
 print("UART Interrupts Active. Waiting for data...")
 
