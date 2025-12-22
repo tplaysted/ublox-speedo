@@ -86,11 +86,22 @@ class Button(object):
         self.last_val = 1
         self.pin = Pin(13, Pin.IN, Pin.PULL_UP)
 
+        self.press_time = 1000
+
         self.timer.init(callback=self.poll, freq=25, mode=Timer.PERIODIC)
 
     def poll(self, _):
         if self.last_val == 1 and self.pin.value() == 0:
             self.on_click()
+
+        if self.long_acc >= self.press_time:
+            self.long_acc = 0
+            self.on_press()
+
+        if self.pin.value() == 0:
+            self.long_acc += 40
+        else:
+            self.long_acc = 0
 
         self.last_val = self.pin.value()
 
@@ -99,7 +110,7 @@ class Button(object):
         mode = (mode + 1) % 3
 
     def on_press(self):
-        pass
+        print("held")
 
 
 def data_thread():
