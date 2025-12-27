@@ -392,7 +392,7 @@ class MicropyGPS(object):
             else:
                 hours = 0
                 minutes = 0
-                seconds = 0.0
+                seconds = 0
 
             # Number of Satellites in Use
             satellites_in_use = int(self.gps_segments[7])
