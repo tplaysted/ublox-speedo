@@ -29,7 +29,10 @@ async def gps_updater(gps, q):
     # Continuously update the gps object
     while True:
         while q.any():
-            gps.update(q.read(1).decode("utf-8"))
+            try:
+                gps.update(q.read(1).decode("utf-8"))
+            except UnicodeError:
+                pass
 
         await uasyncio.sleep_ms(2)
 
