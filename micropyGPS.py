@@ -222,7 +222,7 @@ class MicropyGPS(object):
                 seconds = int(utc_string[4:6])
                 self.timestamp = [hours, minutes, seconds]
             else:  # No Time stamp yet
-                self.timestamp = [0, 0, 0.0]
+                self.timestamp = [0, 0, 0]
 
         except ValueError:  # Bad Timestamp value present
             return False
@@ -319,7 +319,7 @@ class MicropyGPS(object):
                 seconds = int(utc_string[4:6])
                 self.timestamp = [hours, minutes, seconds]
             else:  # No Time stamp yet
-                self.timestamp = [0, 0, 0.0]
+                self.timestamp = [0, 0, 0]
 
         except ValueError:  # Bad Timestamp value present
             return False
@@ -583,7 +583,7 @@ class MicropyGPS(object):
                 seconds = int(utc_string[4:6])
                 self.timestamp = [hours, minutes, seconds]
             else:  # No Time stamp yet
-                self.timestamp = [0, 0, 0.0]
+                self.timestamp = [0, 0, 0]
 
         except (ValueError, IndexError):
             return False
