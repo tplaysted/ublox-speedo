@@ -3,6 +3,7 @@ import uasyncio
 from micropyGPS import MicropyGPS
 from micropython import RingIO
 from lib_lcd1602_2004_with_i2c import LCD
+from math import sqrt
 
 # Initialize UART
 uart = UART(2, baudrate=115200, tx=14, rx=12, rxbuf=10000)  # Use a non-default UART
@@ -21,7 +22,7 @@ async def uart_reader(q):
             # print(f"Received: {line.decode().strip()}")
             q.write(line)
 
-        await uasyncio.sleep_ms(1)
+        # await uasyncio.sleep_ms(2)
 
 
 async def gps_updater(gps, q):
@@ -30,7 +31,7 @@ async def gps_updater(gps, q):
         while q.any():
             gps.update(q.read(1).decode("utf-8"))
 
-        await uasyncio.sleep_ms(1)
+        await uasyncio.sleep_ms(2)
 
 
 async def printer(gps):
@@ -59,7 +60,9 @@ async def refresh(gps, lcd):  # update the lcd display
         if mode == 2:
             speed_str = gps.speed_string()
             lcd.puts(speed_str + " " * max(0, 16 - len(speed_str)))
-            lcd.puts(" " * 16, y=1)
+
+            pre_str = f"PRE = {sqrt(gps.std_lat**2 + gps.std_lon**2):.2f} m"
+            lcd.puts(pre_str + " " * max(0, 16 - len(pre_str)), y=1)
 
         await uasyncio.sleep_ms(100)
 
@@ -94,7 +97,7 @@ async def main():
     uasyncio.create_task(gps_updater(gps, q))
 
     # Start the logger
-    uasyncio.create_task(printer(gps))
+    # uasyncio.create_task(printer(gps))
 
     # Start the display updater
     uasyncio.create_task(refresh(gps, lcd))
