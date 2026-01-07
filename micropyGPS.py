@@ -937,7 +937,7 @@ class MicropyGPS(object):
         "GPGSA": gpgsa,
         "GLGSA": gpgsa,
         "GPGSV": gpgsv,
-        "GLGSV": gpgsv,
+        # "GLGSV": gpgsv,
         "GPGLL": gpgll,
         "GLGLL": gpgll,
         "GNGGA": gpgga,
