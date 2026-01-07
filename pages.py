@@ -1,13 +1,14 @@
-import math
-
 from color_setup import ssd
 from gui.core.nanogui import refresh
-from gui.core.writer import Writer  # Renders color text
-from gui.fonts import arial10
 from gui.widgets.dial import Dial, Pointer
 from gui.widgets.label import Label  # Import any widgets you plan to use
 
 refresh(ssd, True)  # Initialise and clear display.
+
+import math
+
+from gui.core.writer import Writer  # Renders color text
+from gui.fonts import arial10
 
 
 class Quality:
@@ -29,8 +30,8 @@ class Quality:
 
     def get_sat_xy(self, data):
         rad = self.elev_to_rad(math.radians(data[0]))
-        x = 32 + int(rad * math.cos(math.radians(data[1])))
-        y = 32 - int(rad * math.sin(math.radians(data[1])))
+        x = 32 + int(rad * math.sin(math.radians(data[1])))
+        y = 32 + int(rad * math.cos(math.radians(data[1])))
 
         return x, y
 
