@@ -2,15 +2,16 @@
 import uasyncio
 from machine import I2C, UART, Pin
 from micropython import RingIO
-from pages import Quality
 
 from micropyGPS import MicropyGPS
+from pages import Default, Quality
 
 # Initialize UART
 uart = UART(2, baudrate=115200, tx=6, rx=7, rxbuf=10000)  # Use a non-default UART
 
 # display mode flag
 mode = 0
+change_page = False
 
 
 async def uart_reader(q):
@@ -48,24 +49,37 @@ async def printer(gps):
 
 
 async def refresh_display(gps):  # update the oled display
+    global mode, change_page
+
+    deflt = Default()
     qual = Quality()
-    qual.load(gps)
+
+    page_list = [deflt, qual]
 
     while True:
-        qual.refresh(gps)
+        page = page_list[mode]
+
+        if change_page:
+            change_page = False
+            page.load(gps)
+            page.refresh(gps)
+        else:
+            page.refresh(gps)
+
         await uasyncio.sleep_ms(100)
 
 
 async def poll_button(pin):
     # Poll the button around ~50Hz for free debouncing
-    global mode
+    global mode, change_page
     last = 1
 
     while True:
         cur = pin.value()
 
         if last == 1 and cur == 0:  # falling edge
-            mode = (mode + 1) % 3
+            change_page = True
+            mode = (mode + 1) % 2
 
         last = cur
 
@@ -77,7 +91,7 @@ async def main():
     gps = MicropyGPS()
     q = RingIO(10000)
     # lcd = LCD(I2C(scl=Pin(8), sda=Pin(9), freq=100000))
-    pin = Pin(10, Pin.IN, Pin.PULL_UP)
+    pin = Pin(5, Pin.IN, Pin.PULL_UP)
 
     # Start the UART reader task
     uasyncio.create_task(uart_reader(q))
