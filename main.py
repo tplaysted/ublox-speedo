@@ -1,147 +1,121 @@
-from color_setup import ssd
+# General imports
+from machine import UART, Pin, I2C
+import uasyncio
+from micropyGPS import MicropyGPS
+from micropython import RingIO
+from math import sqrt
+from pages import Default, Quality, Speedometer
 
-from gui.core.nanogui import refresh
-from gui.widgets.label import Label, ALIGN_RIGHT  # Import any widgets you plan to use
-from gui.widgets.dial import Dial, Pointer
+# Initialize UART
+uart = UART(2, baudrate=115200, tx=6, rx=7, rxbuf=10000)  # Use a non-default UART
 
-from gui.core.writer import Writer  # Renders color text
-from gui.fonts import mono10, mono16bold
+# display mode flag
+mode = 0
+change_page = False
 
-import math
+async def uart_reader(q):
+    # Wrap raw UART in StreamReader
+    reader = uasyncio.StreamReader(uart)
+    while True:
+        # Non-blocking read until newline
+        line = await reader.readline()
+        if line:
+            # print(f"Received: {line.decode().strip()}")
+            q.write(line)
 
-refresh(ssd, True)  # Initialise and clear display.
-
-class Quality:
-    def __init__(self):
-        # Writer for gui elements
-        Writer.set_textpos(ssd, 0, 0)  # In case previous tests have altered it
-
-        # Instantiate any Writers to be used (one for each font)
-        self.wri = Writer(ssd, mono10, verbose=False)  # Monochrome display uses Writer
-        self.wri.set_clip(True, True, False)
-        self.siv_lbl = Label(self.wri, 2, 68, 59)
-        self.pre_lbl = Label(self.wri, 26, 68, 59)
-        self.alt_lbl = Label(self.wri, 50, 68, 59)
-
-        self.sat_labels = {} # Label widgets for each satellite we have seen
-
-    def elev_to_rad(self, elev):
-        return math.cos(elev) * 28
-
-    def get_sat_xy(self, data):
-        rad = self.elev_to_rad(math.radians(data[0]))
-        x = 32 + int(rad * math.sin(math.radians(data[1])))
-        y = 32 + int(rad * math.cos(math.radians(data[1])))
-
-        return x, y
-
-    def draw_sat(self, lbl, data):
-        if data[0] is None or data[1] is None:
-            lbl
-            return
-
-        x, y = self.get_sat_xy(data)
-        lbl.row = y - 3
-        lbl.col = x - 3
-        val = '?' if data[2] is None else int(data[2] / 10.0)
-        lbl.value(f'{val}', invert=True)
-
-    def update_sat_labels(self, gps):
-        for svid, lbl in self.sat_labels.items(): # backward pass to de-render missing sats
-            if svid not in gps.satellite_data: # de-render sat
-                lbl.value('') # this should de-render the Label
-
-        self.circles()
-
-        for svid, data in gps.satellite_data.items(): # forward pass to update existing and add new sats
-            if svid in self.sat_labels: # update label
-                lbl = self.sat_labels[svid]
-            else: # add label
-                lbl = Label(self.wri, 0, 0, 6)
-                self.sat_labels[svid] = lbl
-
-            self.draw_sat(lbl, data)
+        # await uasyncio.sleep_ms(2)
 
 
-    def circles(self):
-        ssd.ellipse(32, 32, 14, 14, 0xffff)
-        ssd.ellipse(32, 32, 28, 28, 0xffff)
+async def gps_updater(gps, q):
+    # Continuously update the gps object
+    while True:
+        while q.any():
+            try:
+                gps.update(q.read(1).decode("utf-8"))
+            except UnicodeError:
+                pass
 
-    def load(self, gps): # to be called when changing to this page
-        refresh(ssd, True)  # Initialise and clear display.
-        self.circles()
-        self.siv_lbl.value(f'In view:{gps.satellites_in_view}')
-        Label(self.wri, 16, 68, 'Horiz.PRE')
-        self.pre_lbl.value(f' ={math.sqrt(gps.std_lat**2 + gps.std_lon**2):.2f} m')
-        Label(self.wri, 40, 68, 'Alt.error')
-        self.alt_lbl.value(f' ={gps.std_alt:.2f} m')
-
-        refresh(ssd)
-
-    def refresh(self, gps): # to be called at around 10 Hz
-        self.siv_lbl.value(f'In view:{gps.satellites_in_view}')
-        self.pre_lbl.value(f' ={math.sqrt(gps.std_lat**2 + gps.std_lon**2):.2f} m')
-        self.alt_lbl.value(f' ={gps.std_alt:.2f} m')
-        self.update_sat_labels(gps)
-        refresh(ssd)
+        await uasyncio.sleep_ms(2)
 
 
-class Default:
-    def __init__(self):
-        # Writer for gui elements
-        Writer.set_textpos(ssd, 0, 0)  # In case previous tests have altered it
+async def printer(gps):
+    # Log gps data once a second
+    while True:
+        print(f'{gps.date_string()}, {gps.time_string()}')
+        print(f'{gps.latitude_string()}, {gps.longitude_string()}')
+        # print(f'{gps.satellite_data}')
+        await uasyncio.sleep_ms(1000)
 
-        # Instantiate any Writers to be used (one for each font)
-        self.wri = Writer(ssd, mono10, verbose=False)  # Monochrome display uses Writer
-        self.wri.set_clip(True, True, False)
 
-        self.date_lbl = Label(self.wri, 2, 2, 120)
-        self.time_lbl = Label(self.wri, 12, 2, 120)
-        self.lat_lbl = Label(self.wri, 32, 2, 120)
-        self.lon_lbl = Label(self.wri, 42, 2, 120)
-        self.alt_lbl = Label(self.wri, 52, 2, 120)
+async def refresh_display(gps):  # update the oled display
+    global mode, change_page
 
-    def load(self, gps): # to be called when changing to this page
-        refresh(ssd, True)  # Initialise and clear display.
-        self.date_lbl.value(f'{gps.date_string()}')
-        self.time_lbl.value(f'{gps.time_string()}')
-        self.lat_lbl.value(f'Lat. {gps.latitude_string()}')
-        self.lon_lbl.value(f'Lon. {gps.longitude_string()}')
-        self.alt_lbl.value(f'Alt. {gps.altitude:.1f} m')
-        refresh(ssd)
+    deflt = Default()
+    qual = Quality()
+    spdo = Speedometer()
 
-    def refresh(self, gps): # to be called at around 10 Hz
-        self.date_lbl.value(f'{gps.date_string()}')
-        self.time_lbl.value(f'{gps.time_string()}')
-        self.lat_lbl.value(f'Lat. {gps.latitude_string()}')
-        self.lon_lbl.value(f'Lon. {gps.longitude_string()}')
-        self.alt_lbl.value(f'Alt. {gps.altitude:.1f} m')
+    page_list = [deflt, qual, spdo]
 
-        refresh(ssd)
+    while True:
+        page = page_list[mode]
 
-class Speedometer:
-    def __init__(self):
-        # Writer for gui elements
-        Writer.set_textpos(ssd, 0, 0)  # In case previous tests have altered it
+        if change_page:
+            change_page = False
+            page.load(gps)
+            page.refresh(gps)
+        else:
+            page.refresh(gps)
 
-        # Instantiate any Writers to be used (one for each font)
-        self.wri = Writer(ssd, mono10, verbose=False)  # Monochrome display uses Writer
-        self.wri_bold = Writer(ssd, mono16bold, verbose=False)  # Monochrome display uses Writer
-        self.wri.set_clip(True, True, False)
-        self.wri_bold.set_clip(True, True, False)
+        await uasyncio.sleep_ms(100)
 
-        self.speed_whl_lbl = Label(self.wri_bold, 2, 2, 18, align=ALIGN_RIGHT) # label for speed whole part
-        self.speed_dec_lbl = Label(self.wri, 6, 20, 40) # label for speed decimal part
 
-    def load(self, gps): # to be called when changing to this page
-        refresh(ssd, True)  # Initialise and clear display.
-        f, i = math.modf(gps.speed[2])
-        self.speed_whl_lbl.value(f'{i:.0f}')
-        self.speed_dec_lbl.value(f'.{f * 10:.0f} km/h')
-        refresh(ssd)
+async def poll_button(pin):
+    # Poll the button around ~50Hz for free debouncing
+    global mode, change_page
+    last = 1
 
-    def refresh(self, gps): # to be called at around 10 Hz
-        f, i = math.modf(round(gps.speed[2], 1))
-        self.speed_whl_lbl.value(f'{i:.0f}')
-        self.speed_dec_lbl.value(f'.{f * 10:.0f} km/h')
-        refresh(ssd)
+    while True:
+        cur = pin.value()
+
+        if last == 1 and cur == 0:  # falling edge
+            change_page = True
+            mode = (mode + 1) % 3
+
+        last = cur
+
+        await uasyncio.sleep_ms(20)
+
+
+async def main():
+    # Create GPS object and circular buffer
+    gps = MicropyGPS()
+    q = RingIO(10000)
+    # lcd = LCD(I2C(scl=Pin(8), sda=Pin(9), freq=100000))
+    pin = Pin(5, Pin.IN, Pin.PULL_UP)
+
+    # Start the UART reader task
+    uasyncio.create_task(uart_reader(q))
+
+    # Start the GPS updater
+    uasyncio.create_task(gps_updater(gps, q))
+
+    # Start the logger
+    uasyncio.create_task(printer(gps))
+
+    # Start the display updater
+    uasyncio.create_task(refresh_display(gps))
+
+    # Start the button poller
+    uasyncio.create_task(poll_button(pin))
+
+    # Run other tasks
+    print("System Running...")
+    while True:
+        await uasyncio.sleep(1)
+
+
+# Run the event loop
+try:
+    uasyncio.run(main())
+except KeyboardInterrupt:
+    print("Stopped")
