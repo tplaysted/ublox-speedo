@@ -5,15 +5,13 @@ from micropyGPS import MicropyGPS
 from micropython import RingIO
 from math import sqrt
 from pages import Default, Quality, Speedometer
-
-# Initialize UART
-uart = UART(2, baudrate=115200, tx=6, rx=7, rxbuf=10000)  # Use a non-default UART
+from assistnow import assist_now
 
 # display mode flag
 mode = 0
 change_page = False
 
-async def uart_reader(q):
+async def uart_reader(uart, q):
     # Wrap raw UART in StreamReader
     reader = uasyncio.StreamReader(uart)
     while True:
@@ -85,6 +83,11 @@ async def poll_button(pin):
 
         await uasyncio.sleep_ms(20)
 
+async def save_content(uart):
+    while True:
+        uart.write(b'\xb5b\t\x14\x00\x00\x1d')
+        uasyncio.sleep(60)
+
 
 async def main():
     # Create GPS object and circular buffer
@@ -92,9 +95,15 @@ async def main():
     q = RingIO(10000)
     # lcd = LCD(I2C(scl=Pin(8), sda=Pin(9), freq=100000))
     pin = Pin(5, Pin.IN, Pin.PULL_UP)
+    # Initialize UART
+    uart = UART(2, baudrate=115200, tx=6, rx=7, rxbuf=10000)  # Use a non-default UART
+
+
+    # Start the AssistNow task
+    uasyncio.create_task(assist_now(uart))
 
     # Start the UART reader task
-    uasyncio.create_task(uart_reader(q))
+    uasyncio.create_task(uart_reader(uart, q))
 
     # Start the GPS updater
     uasyncio.create_task(gps_updater(gps, q))
