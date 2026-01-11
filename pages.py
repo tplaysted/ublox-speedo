@@ -24,6 +24,7 @@ class Quality:
         self.alt_lbl = Label(self.wri, 50, 68, 59)
 
         self.sat_labels = {} # Label widgets for each satellite we have seen
+        self.refresh_count = 0
 
     def elev_to_rad(self, elev):
         return math.cos(elev) * 28
@@ -69,21 +70,35 @@ class Quality:
 
     def load(self, gps): # to be called when changing to this page
         refresh(ssd, True)  # Initialise and clear display.
+        self.refresh_count = 0
         self.circles()
         self.siv_lbl.value(f'In view:{gps.satellites_in_view}')
         Label(self.wri, 16, 68, 'Horiz.PRE')
-        self.pre_lbl.value(f' ={math.sqrt(gps.std_lat**2 + gps.std_lon**2):.2f} m')
+        
+        pre = math.sqrt(gps.std_lat**2 + gps.std_lon**2)
+        pre_str = ">999 m" if pre > 999 else f"{pre:.2f}"
+        self.pre_lbl.value(f' ={pre_str} m')
         Label(self.wri, 40, 68, 'Alt.error')
-        self.alt_lbl.value(f' ={gps.std_alt:.2f} m')
+        alt_str = ">999 m" if gps.std_alt > 999 else f"{gps.std_alt:.2f}"
+        self.alt_lbl.value(f' ={alt_str} m')
 
         refresh(ssd)
 
     def refresh(self, gps): # to be called at around 10 Hz
         self.siv_lbl.value(f'In view:{gps.satellites_in_view}')
-        self.pre_lbl.value(f' ={math.sqrt(gps.std_lat**2 + gps.std_lon**2):.2f} m')
-        self.alt_lbl.value(f' ={gps.std_alt:.2f} m')
+        pre = math.sqrt(gps.std_lat**2 + gps.std_lon**2)
+        pre_str = ">999 m" if pre > 999 else f"{pre:.2f}"
+        self.pre_lbl.value(f' ={pre_str} m')
+        alt_str = ">999 m" if gps.std_alt > 999 else f"{gps.std_alt:.2f}"
+        self.alt_lbl.value(f' ={alt_str} m')
         self.update_sat_labels(gps)
-        refresh(ssd)
+        
+        if self.refresh_count > 600: # full refresh every minute
+            refresh(ssd, True)
+            self.refresh_count = 0
+        else:
+            refresh(ssd)
+            self.refresh_count += 1
 
 
 class Default:
