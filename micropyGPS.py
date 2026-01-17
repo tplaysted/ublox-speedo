@@ -915,7 +915,7 @@ class MicropyGPS(object):
 
         return f"{self.__DAYS[tt[6]]} {tt[2]} {self.__MONTHS[tt[1] - 1]} {tt[0]}"
 
-    def time_string(self):
+    def time_string(self, seconds=True):
         """Return a formatted time string in the Australia/Melbourne timezone"""
 
         # we don't know the day of week yet so get that here
@@ -923,8 +923,11 @@ class MicropyGPS(object):
 
         am_pm = "AM" if time_tuple[3] < 12 else "PM"
         hour = 12 if time_tuple[3] in (0, 12) else time_tuple[3] % 12
-
-        return f"{hour}:{time_tuple[4]:02d}:{time_tuple[5]:02d} {am_pm}"
+        
+        if seconds:
+            return f"{hour}:{time_tuple[4]:02d}:{time_tuple[5]:02d} {am_pm}"
+        else:
+            return f"{hour}:{time_tuple[4]:02d} {am_pm}"
 
     # All the currently supported NMEA sentences
     supported_sentences = {
