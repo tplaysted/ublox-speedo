@@ -5,9 +5,10 @@ from gui.widgets.label import Label, ALIGN_RIGHT  # Import any widgets you plan 
 from gui.widgets.dial import Dial, Pointer
 
 from gui.core.writer import Writer  # Renders color text
-from gui.fonts import mono10, mono16bold
+from gui.fonts import mono10, mono16bold, mono32bold
 
 import math
+import utime
 
 refresh(ssd, True)  # Initialise and clear display.
 
@@ -76,15 +77,19 @@ class Quality:
         Label(self.wri, 16, 68, 'Horiz.PRE')
         
         pre = math.sqrt(gps.std_lat**2 + gps.std_lon**2)
-        pre_str = ">999 m" if pre > 999 else f"{pre:.2f}"
-        self.pre_lbl.value(f' ={pre_str} m')
+        pre_str = ">999 m" if pre > 999 else f"{pre:.2f} m"
+        self.pre_lbl.value(f' ={pre_str}')
         Label(self.wri, 40, 68, 'Alt.error')
-        alt_str = ">999 m" if gps.std_alt > 999 else f"{gps.std_alt:.2f}"
-        self.alt_lbl.value(f' ={alt_str} m')
+        alt_str = ">999 m" if gps.std_alt > 999 else f"{gps.std_alt:.2f} m"
+        self.alt_lbl.value(f' ={alt_str}')
 
         refresh(ssd)
 
     def refresh(self, gps): # to be called at around 10 Hz
+        if self.refresh_count > 600: # full refresh every minute
+            self.load(gps)
+            return
+    
         self.siv_lbl.value(f'In view:{gps.satellites_in_view}')
         pre = math.sqrt(gps.std_lat**2 + gps.std_lon**2)
         pre_str = ">999 m" if pre > 999 else f"{pre:.2f}"
@@ -92,15 +97,10 @@ class Quality:
         alt_str = ">999 m" if gps.std_alt > 999 else f"{gps.std_alt:.2f}"
         self.alt_lbl.value(f' ={alt_str} m')
         self.update_sat_labels(gps)
+
+        refresh(ssd)
+        self.refresh_count += 1
         
-        if self.refresh_count > 600: # full refresh every minute
-            refresh(ssd, True)
-            self.refresh_count = 0
-        else:
-            refresh(ssd)
-            self.refresh_count += 1
-
-
 class Default:
     def __init__(self):
         # Writer for gui elements
@@ -141,22 +141,69 @@ class Speedometer:
 
         # Instantiate any Writers to be used (one for each font)
         self.wri = Writer(ssd, mono10, verbose=False)  # Monochrome display uses Writer
-        self.wri_bold = Writer(ssd, mono16bold, verbose=False)  # Monochrome display uses Writer
+        self.wri_bold = Writer(ssd, mono32bold, verbose=False)  # For speed whole part
+        self.wri_med = Writer(ssd, mono16bold, verbose=False)  # For speed decimal part
+        
         self.wri.set_clip(True, True, False)
         self.wri_bold.set_clip(True, True, False)
 
-        self.speed_whl_lbl = Label(self.wri_bold, 2, 2, 18, align=ALIGN_RIGHT) # label for speed whole part
-        self.speed_dec_lbl = Label(self.wri, 6, 20, 40) # label for speed decimal part
+        self.speed_whl_lbl = Label(self.wri_bold, 2, 2, 36, align=ALIGN_RIGHT) # label for speed whole part
+        self.speed_dec_lbl = Label(self.wri_med, 15, 36, 18) # label for speed decimal part
+        # self.acc_label = Label(self.wri, 24, 2, 62) # label for acceleration
+        self.hdg_lbl = Label(self.wri, 36, 2, 62) # label for heading
+        self.time_lbl = Label(self.wri, 50, 2, 62) # label for time display
+        
+        self.compass = Dial(self.wri, 12, 77, height=40, style=Dial.COMPASS, ticks=16)
+        self.pointer = Pointer(self.compass)
+        
+        self._v = [0.0, 0.0, 0.0, 0.0]
+        self.acc = 0
+        self.count = 0
+        self.ticks = utime.ticks_ms()
+        
+    def draw_compass(self, hdg):
+        v = 0.8 * math.sin(math.radians(hdg)) + math.cos(math.radians(hdg)) * 0.8j
+        self.pointer.value(v)
 
     def load(self, gps): # to be called when changing to this page
         refresh(ssd, True)  # Initialise and clear display.
         f, i = math.modf(gps.speed[2])
         self.speed_whl_lbl.value(f'{i:.0f}')
-        self.speed_dec_lbl.value(f'.{f * 10:.0f} km/h')
+        self.speed_dec_lbl.value(f'.{f * 10:.0f}')
+        Label(self.wri, 6, 47, 'kph')
+        Label(self.wri, 1, 95, 'N')
+        Label(self.wri, 52, 95, 'S')
+        Label(self.wri, 27, 69, 'W')
+        Label(self.wri, 27, 119, 'E')
+        # self.acc_label.value(f'={self.acc:.1f} m/s^2 ')
+        # Label(self.wri, 25, 2, 'Heading')
+        self.hdg_lbl.value(f'HDG: {gps.course:.0f}°')
+        self.time_lbl.value(f'{gps.time_string(seconds=False)}')
+        self.draw_compass(gps.course)
+        self._v = [0.0, 0.0, 0.0, 0.0]
         refresh(ssd)
 
     def refresh(self, gps): # to be called at around 10 Hz
+#         if self.count >= 5: # recalculate acceleration
+#             now = utime.ticks_ms()
+#             dt = (now - self.ticks) / 1000 # needed for finite diff approximation
+#             self.ticks = now
+#             
+#             self._v = self._v[1:] + [gps.speed[2] / 3.6]
+#             v3, v2, v1, v0 = self._v
+#             self.acc = ((2 * v0) - (5 * v1) + (4 * v2) - v3) / (dt ** 3) # backward diff
+#             self.count = 0
+#         else:
+#             self.count += 1
+        
         f, i = math.modf(round(gps.speed[2], 1))
         self.speed_whl_lbl.value(f'{i:.0f}')
-        self.speed_dec_lbl.value(f'.{f * 10:.0f} km/h')
+        self.speed_dec_lbl.value(f'.{f * 10:.0f}')
+        # acc_str = f'={self.acc:.1f} m/s^2 ' if self.acc >= 0 else f'={self.acc:.1f}m/s^2 '
+        # self.acc_label.value(acc_str)
+        # Label(self.wri, 25, 2, 'Heading')
+        self.time_lbl.value(f'{gps.time_string()}')
+        if gps.speed[2] > 1.0: # freeze compass at low speed
+            self.hdg_lbl.value(f'HDG: {gps.course:.0f}°')
+            self.draw_compass(gps.course)
         refresh(ssd)
