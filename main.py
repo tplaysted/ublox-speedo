@@ -1,11 +1,13 @@
 # General imports
-from machine import UART, Pin, I2C
+from machine import UART, Pin, SoftI2C
 import uasyncio
 from micropyGPS import MicropyGPS
 from micropython import RingIO
 from math import sqrt
-from pages import Default, Quality, Speedometer
-from assistnow import assist_now
+from pages import *
+from assistnow import *
+from RV3028 import RV3028
+import utime
 
 # display mode flag
 mode = 0
@@ -82,11 +84,16 @@ async def poll_button(pin):
         last = cur
 
         await uasyncio.sleep_ms(20)
-
-async def save_content(uart):
+        
+async def save_content(uart): # save on shutdown msg, not used
     while True:
         uart.write(b'\xb5b\t\x14\x00\x00\x1d')
-        uasyncio.sleep(60)
+        await uasyncio.sleep(60)
+        
+async def print_time(rtc):
+    while True:
+        print(ubx_mga_ini_utc(rtc))
+        await uasyncio.sleep(1)
 
 
 async def main():
@@ -97,10 +104,14 @@ async def main():
     pin = Pin(5, Pin.IN, Pin.PULL_UP)
     # Initialize UART
     uart = UART(2, baudrate=115200, tx=6, rx=7, rxbuf=10000)  # Use a non-default UART
-
+    rtc = RV3028(i2c=SoftI2C(sda = Pin(11), scl = Pin(10))) # rtc initialisation
+    
+    # Set gps time + position est
+    uart.write(ubx_mga_ini_utc(rtc))
+    uart.write(ubx_mga_ini_pos())
 
     # Start the AssistNow task
-    uasyncio.create_task(assist_now(uart))
+    uasyncio.create_task(assist_now(uart, rtc))
 
     # Start the UART reader task
     uasyncio.create_task(uart_reader(uart, q))
@@ -109,13 +120,16 @@ async def main():
     uasyncio.create_task(gps_updater(gps, q))
 
     # Start the logger
-    uasyncio.create_task(printer(gps))
+    # uasyncio.create_task(print_time(rtc))
 
     # Start the display updater
     uasyncio.create_task(refresh_display(gps))
 
     # Start the button poller
     uasyncio.create_task(poll_button(pin))
+    
+    # Start the last known coordinates caching task
+    uasyncio.create_task(caching(gps, rtc))
 
     # Run other tasks
     print("System Running...")
